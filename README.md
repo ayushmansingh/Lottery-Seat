@@ -14,6 +14,12 @@ HS-34 … HS-47) — then moves on to the next draw.
   confetti and sound (mute toggle included). Perfect for projecting on a TV.
 - **Winner's choice** — the drawn teammate clicks any glowing free seat, or
   hits **🎲 Random seat** to let fate decide everything.
+- **Walking buddy** — once the seat is decided, a little bubble-faced
+  character (with the teammate's photo) walks across the office and sits
+  down in it, complete with footstep sounds.
+- **Team photos** — drop images into [`avatars/`](avatars/README.md) or click
+  a person's bubble in the "In the hat" panel to upload one; faces show up in
+  the draw reveal, the walker, the results, and on the assigned seat.
 - **Live tracker** — draw order, timestamps, and seat tags in the sidebar;
   assigned seats show the occupant's name on the map.
 - **Safety nets** — undo the last assignment, cancel a draw (name goes back in

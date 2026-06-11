@@ -102,8 +102,8 @@ const BLOCKS = [
 ];
 
 const DESIGNATIONS = {
+  'Harkirat Singh':    'Vice President - Revenue',
   'Prateek Singal':    'Vice President - Product Management',
-  'Swati Dogra':       'Vice President - Product Management',
   'Sarvesh Sidhu':     'Lead Product Manager',
   'Richa Tudu':        'Product Manager',
   'Ayushman Singh':    'Associate Product Manager',
@@ -116,7 +116,6 @@ const DESIGNATIONS = {
   'Rashi Srivastava':  'Senior Product Analyst',
   'Sumaira Mehta':     'Senior Product Analyst',
   'Samridh Gupta':     'Senior Manager - Product Management',
-  'Kiratpal Singh':    'Intern',
 };
 
 const DEFAULT_PARTICIPANTS = Object.keys(DESIGNATIONS);
