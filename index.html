@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Seat Lottery · Online Product</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>🎰</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- ── Sidebar ─────────────────────────────────────────── -->
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>🎰 Seat Lottery <span class="spark">·</span> Online Product</h1>
+        <p>Luck decides the order — the winner picks any free yellow seat.</p>
+      </div>
+
+      <div class="stats">
+        <div class="stat people"><b id="stat-people">0</b><span>In the hat</span></div>
+        <div class="stat seats"><b id="stat-seats">0</b><span>Free seats</span></div>
+        <div class="stat done"><b id="stat-done">0</b><span>Assigned</span></div>
+      </div>
+
+      <button id="draw-btn" class="draw-btn">
+        🎲 Draw next teammate
+        <span class="sub">Who's feeling lucky?</span>
+      </button>
+
+      <div id="all-done" class="all-done">🏁 Lottery complete — everyone has a seat!</div>
+
+      <section class="hat">
+        <h2>In the hat <span id="hat-count"></span></h2>
+        <div id="hat-list" class="hat-list"></div>
+        <div class="hat-add">
+          <input id="add-name-input" placeholder="Add a name…" maxlength="60" />
+          <button id="add-name-btn" title="Add to the lottery">+</button>
+        </div>
+      </section>
+
+      <section class="results">
+        <h2>Draw order</h2>
+        <div id="results-list" class="results-list">
+          <div class="results-empty">No draws yet.<br />Hit the big yellow button to start!</div>
+        </div>
+      </section>
+
+      <div class="actions">
+        <button id="undo-btn">↩️ Undo last</button>
+        <button id="export-btn">📄 Export CSV</button>
+        <button id="edit-btn">👥 Edit participants</button>
+        <button id="sound-btn">🔊 Sound on</button>
+        <button id="reset-btn" class="danger" style="grid-column: 1 / -1;">🗑️ Reset lottery</button>
+      </div>
+    </aside>
+
+    <!-- ── Map ─────────────────────────────────────────────── -->
+    <main class="main">
+      <div class="toolbar">
+        <span class="title">Office floor plan — yellow seats are up for grabs</span>
+        <span class="spacer"></span>
+        <button id="zoom-out" title="Zoom out">−</button>
+        <button id="zoom-fit" title="Fit to screen">⤢</button>
+        <button id="zoom-in" title="Zoom in">+</button>
+      </div>
+      <div class="map-viewport" id="map-viewport">
+        <div class="map-scale" id="map-scale">
+          <div class="map-grid" id="map-grid"></div>
+        </div>
+      </div>
+      <div class="legend" id="legend"></div>
+    </main>
+  </div>
+
+  <!-- ── Picking banner ──────────────────────────────────── -->
+  <div class="pick-banner" id="pick-banner">
+    <span class="msg">🎯 <b id="pick-name"></b>, click a glowing seat to claim it!</span>
+    <button id="random-seat-btn" class="primary">🎲 Random seat</button>
+    <button id="cancel-pick-btn">Cancel draw</button>
+  </div>
+
+  <!-- ── Draw overlay ────────────────────────────────────── -->
+  <div class="overlay" id="overlay">
+    <div class="draw-stage" id="draw-stage">
+      <div class="label" id="stage-label">Drawing…</div>
+      <div class="name-display" id="name-display">&nbsp;</div>
+      <div class="name-role" id="name-role">&nbsp;</div>
+      <div class="hint">You're up! Time to pick a seat 🍀</div>
+      <button class="continue-btn" id="continue-btn">Pick my seat →</button>
+    </div>
+  </div>
+
+  <!-- ── Participants modal ──────────────────────────────── -->
+  <div class="modal-backdrop" id="modal-backdrop">
+    <div class="modal">
+      <h2>👥 Who's in the lottery?</h2>
+      <p>One name per line. You can come back and edit any time — teammates who already
+         have a seat keep it.</p>
+      <textarea id="participants-input" spellcheck="false" placeholder="e.g.&#10;Priya&#10;Rohan&#10;Sara"></textarea>
+      <div class="modal-foot">
+        <span class="count-note" id="count-note"></span>
+        <button class="save-btn" id="save-participants-btn">Save list</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <canvas id="confetti"></canvas>
+
+  <script src="js/data.js"></script>
+  <script src="js/confetti.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
