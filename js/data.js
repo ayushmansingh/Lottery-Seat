@@ -101,7 +101,22 @@ const BLOCKS = [
   { label: 'Cubi-2', c1: 2, c2: 2, r1: 13, r2: 13, cls: 'cubi' },
 ];
 
-const DEFAULT_PARTICIPANTS = [
-  'Aarav', 'Diya', 'Kabir', 'Ananya', 'Vihaan', 'Ishita', 'Rohan',
-  'Meera', 'Arjun', 'Sara', 'Dev', 'Nisha', 'Kunal', 'Priya',
-];
+const DESIGNATIONS = {
+  'Prateek Singal':    'Vice President - Product Management',
+  'Swati Dogra':       'Vice President - Product Management',
+  'Sarvesh Sidhu':     'Lead Product Manager',
+  'Richa Tudu':        'Product Manager',
+  'Ayushman Singh':    'Associate Product Manager',
+  'Rohit Ramapriya':   'Senior Product Analyst',
+  'Ashish Kadian':     'Associate Director - Product Management',
+  'Abhilasha Akhouri': 'Lead Product Manager',
+  'Shivam Goel':       'Associate Product Manager',
+  'Amol Sawant':       'Associate Product Manager',
+  'Saket Dimri':       'Associate Product Manager',
+  'Rashi Srivastava':  'Senior Product Analyst',
+  'Sumaira Mehta':     'Senior Product Analyst',
+  'Samridh Gupta':     'Senior Manager - Product Management',
+  'Kiratpal Singh':    'Intern',
+};
+
+const DEFAULT_PARTICIPANTS = Object.keys(DESIGNATIONS);

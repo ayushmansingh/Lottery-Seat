@@ -544,6 +544,14 @@ body {
   100% { transform: scale(1); }
 }
 
+.draw-stage .name-role {
+  margin-top: 10px;
+  font: 500 17px var(--font);
+  color: var(--text-dim);
+  min-height: 1.3em;
+  letter-spacing: 0.3px;
+}
+
 .draw-stage .hint {
   margin-top: 22px;
   color: var(--text-dim);

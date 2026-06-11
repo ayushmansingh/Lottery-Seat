@@ -31,7 +31,7 @@
     pickBanner: $('pick-banner'), pickName: $('pick-name'),
     randomSeatBtn: $('random-seat-btn'), cancelPickBtn: $('cancel-pick-btn'),
     overlay: $('overlay'), stage: $('draw-stage'), stageLabel: $('stage-label'),
-    nameDisplay: $('name-display'), continueBtn: $('continue-btn'),
+    nameDisplay: $('name-display'), nameRole: $('name-role'), continueBtn: $('continue-btn'),
     modalBackdrop: $('modal-backdrop'), participantsInput: $('participants-input'),
     countNote: $('count-note'), saveParticipantsBtn: $('save-participants-btn'),
     toast: $('toast'),
@@ -69,6 +69,9 @@
   }
   function initials(name) {
     return name.trim().split(/\s+/).slice(0, 2).map(w => w[0].toUpperCase()).join('');
+  }
+  function roleOf(name) {
+    return (typeof DESIGNATIONS !== 'undefined' && DESIGNATIONS[name]) || '';
   }
 
   let toastTimer = null;
@@ -152,7 +155,7 @@
       node.classList.toggle('pickable', phase === 'picking' && !owner);
       if (owner) {
         node.innerHTML = `${id}<span class="occupant">${escapeHtml(owner)}</span>`;
-        node.title = `${id} · ${owner}`;
+        node.title = `${id} · ${owner}` + (roleOf(owner) ? ` · ${roleOf(owner)}` : '');
       } else {
         node.textContent = id;
         node.title = `${id} · ${CATEGORIES[LOTTERY_CAT].label}`;
@@ -193,10 +196,12 @@
       state.assignments.forEach((a, i) => {
         const row = document.createElement('div');
         row.className = 'result-row';
+        const sub = roleOf(a.name) || new Date(a.ts).toLocaleTimeString();
+        row.title = `${a.name} → ${a.seat} · ${new Date(a.ts).toLocaleTimeString()}`;
         row.innerHTML =
           `<span class="order">#${i + 1}</span>` +
           `<span class="avatar" style="background:${avatarColor(a.name)}">${escapeHtml(initials(a.name))}</span>` +
-          `<span class="who"><b>${escapeHtml(a.name)}</b><span>${new Date(a.ts).toLocaleTimeString()}</span></span>` +
+          `<span class="who"><b>${escapeHtml(a.name)}</b><span>${escapeHtml(sub)}</span></span>` +
           `<span class="seat-tag">${a.seat}</span>`;
         el.resultsList.appendChild(row);
       });
@@ -234,11 +239,13 @@
           name = pool[(pool.indexOf(name) + 1) % pool.length];
         }
         el.nameDisplay.textContent = name;
+        el.nameRole.textContent = roleOf(name) || ' ';
         tickSound();
         const t = step / steps;
         setTimeout(spin, 50 + 330 * t * t);
       } else {
         el.nameDisplay.textContent = currentWinner;
+        el.nameRole.textContent = roleOf(currentWinner) || ' ';
         el.stageLabel.textContent = '🎉 Winner';
         el.stage.classList.add('winner');
         fanfare();
