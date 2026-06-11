@@ -10,8 +10,8 @@ Supported extensions: `.jpg`, `.png`, `.jpeg`, `.webp`.
 
 | Teammate          | File name              |
 | ----------------- | ---------------------- |
-| Harkirat Singh    | `harkirat-singh.jpg`   |
 | Prateek Singal    | `prateek-singal.jpg`   |
+| Swati Dogra       | `swati-dogra.jpg`      |
 | Sarvesh Sidhu     | `sarvesh-sidhu.jpg`    |
 | Richa Tudu        | `richa-tudu.jpg`       |
 | Ayushman Singh    | `ayushman-singh.jpg`   |
@@ -24,6 +24,7 @@ Supported extensions: `.jpg`, `.png`, `.jpeg`, `.webp`.
 | Rashi Srivastava  | `rashi-srivastava.jpg` |
 | Sumaira Mehta     | `sumaira-mehta.jpg`    |
 | Samridh Gupta     | `samridh-gupta.jpg`    |
+| Kiratpal Singh    | `kiratpal-singh.jpg`   |
 
 Square-ish crops look best (they're displayed in circles). Alternatively,
 photos can be uploaded inside the app by clicking a person's bubble in the
