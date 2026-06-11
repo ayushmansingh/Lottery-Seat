@@ -85,6 +85,7 @@
   <!-- ── Draw overlay ────────────────────────────────────── -->
   <div class="overlay" id="overlay">
     <div class="draw-stage" id="draw-stage">
+      <div id="stage-avatar"></div>
       <div class="label" id="stage-label">Drawing…</div>
       <div class="name-display" id="name-display">&nbsp;</div>
       <div class="name-role" id="name-role">&nbsp;</div>
@@ -101,12 +102,16 @@
          have a seat keep it.</p>
       <textarea id="participants-input" spellcheck="false" placeholder="e.g.&#10;Priya&#10;Rohan&#10;Sara"></textarea>
       <div class="modal-foot">
-        <span class="count-note" id="count-note"></span>
+        <span class="count-note">
+          <span id="count-note"></span>
+          <button class="link-btn" id="load-defaults-btn">Load default team</button>
+        </span>
         <button class="save-btn" id="save-participants-btn">Save list</button>
       </div>
     </div>
   </div>
 
+  <input type="file" id="photo-input" accept="image/*" hidden />
   <div class="toast" id="toast"></div>
   <canvas id="confetti"></canvas>
 

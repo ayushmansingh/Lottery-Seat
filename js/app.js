@@ -11,10 +11,13 @@
   let state = {
     participants: [],                  // all names in the lottery
     assignments: [],                   // [{ name, seat, ts }] in draw order
+    photos: {},                        // name -> uploaded photo (data URL)
     soundOn: true,
   };
-  let phase = 'idle';                  // idle | drawing | picking
+  let phase = 'idle';                  // idle | drawing | picking | walking
   let currentWinner = null;
+  let pendingSeat = null;              // assigned but character still walking
+  let photoTargetName = null;          // who gets the next uploaded photo
   let zoom = null;                     // null = fit to viewport
 
   const lotterySeats = SEATS.filter(s => s.cat === LOTTERY_CAT).map(s => s.id);
@@ -36,6 +39,8 @@
     nameDisplay: $('name-display'), nameRole: $('name-role'), continueBtn: $('continue-btn'),
     modalBackdrop: $('modal-backdrop'), participantsInput: $('participants-input'),
     countNote: $('count-note'), saveParticipantsBtn: $('save-participants-btn'),
+    loadDefaultsBtn: $('load-defaults-btn'),
+    stageAvatar: $('stage-avatar'), photoInput: $('photo-input'),
     toast: $('toast'),
     zoomIn: $('zoom-in'), zoomOut: $('zoom-out'), zoomFit: $('zoom-fit'),
   };
@@ -74,6 +79,67 @@
   }
   function roleOf(name) {
     return (typeof DESIGNATIONS !== 'undefined' && DESIGNATIONS[name]) || '';
+  }
+
+  /* ── Bubble faces ───────────────────────────────────────────
+     Photo priority: uploaded in-app > avatars/<slug>.jpg|png in
+     the repo > colored initials bubble.                        */
+  const repoAvatars = new Map();       // name -> found src | null
+
+  function slug(name) {
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  }
+
+  function probeRepoAvatar(name) {
+    if (repoAvatars.has(name) || state.photos[name]) return;
+    repoAvatars.set(name, null);
+    const exts = ['jpg', 'png', 'jpeg', 'webp'];
+    const tryNext = i => {
+      if (i >= exts.length) return;
+      const img = new Image();
+      const src = `avatars/${slug(name)}.${exts[i]}`;
+      img.onload = () => { repoAvatars.set(name, src); renderAll(); };
+      img.onerror = () => tryNext(i + 1);
+      img.src = src;
+    };
+    tryNext(0);
+  }
+
+  function photoSrc(name) {
+    return state.photos[name] || repoAvatars.get(name) || null;
+  }
+
+  function avatarEl(name, extraClass = '') {
+    probeRepoAvatar(name);
+    const span = document.createElement('span');
+    span.className = ('avatar ' + extraClass).trim();
+    const src = photoSrc(name);
+    if (src) {
+      span.classList.add('has-photo');
+      span.style.backgroundImage = `url("${src}")`;
+    } else {
+      span.style.background = avatarColor(name);
+      span.textContent = initials(name);
+    }
+    return span;
+  }
+
+  function setPhoto(name, file) {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = c.height = 96;
+      const ctx = c.getContext('2d');
+      const s = Math.min(img.width, img.height);
+      ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 96, 96);
+      state.photos[name] = c.toDataURL('image/jpeg', 0.82);
+      URL.revokeObjectURL(img.src);
+      save();
+      renderAll();
+      toast(`Photo set for ${name} 📸`);
+    };
+    img.onerror = () => toast("Couldn't read that image.");
+    img.src = URL.createObjectURL(file);
   }
 
   let toastTimer = null;
@@ -152,11 +218,14 @@
     for (const node of el.grid.querySelectorAll('.seat')) {
       const id = node.dataset.id;
       if (!lotterySeats.includes(id)) continue;
-      const owner = bySeat.get(id);
+      // While the character walks, its seat still looks free.
+      const owner = id === pendingSeat ? null : bySeat.get(id);
       node.classList.toggle('assigned', !!owner);
       node.classList.toggle('pickable', phase === 'picking' && !owner);
       if (owner) {
-        node.innerHTML = `${id}<span class="occupant">${escapeHtml(owner)}</span>`;
+        const src = photoSrc(owner);
+        const face = src ? `<span class="seat-face" style="background-image:url('${src}')"></span>` : '';
+        node.innerHTML = `${face}${id}<span class="occupant">${escapeHtml(owner)}</span>`;
         node.title = `${id} · ${owner}` + (roleOf(owner) ? ` · ${roleOf(owner)}` : '');
       } else {
         node.textContent = id;
@@ -200,11 +269,16 @@
         row.className = 'result-row';
         const sub = roleOf(a.name) || new Date(a.ts).toLocaleTimeString();
         row.title = `${a.name} → ${a.seat} · ${new Date(a.ts).toLocaleTimeString()}`;
-        row.innerHTML =
-          `<span class="order">#${i + 1}</span>` +
-          `<span class="avatar" style="background:${avatarColor(a.name)}">${escapeHtml(initials(a.name))}</span>` +
-          `<span class="who"><b>${escapeHtml(a.name)}</b><span>${escapeHtml(sub)}</span></span>` +
-          `<span class="seat-tag">${a.seat}</span>`;
+        const order = document.createElement('span');
+        order.className = 'order';
+        order.textContent = `#${i + 1}`;
+        const who = document.createElement('span');
+        who.className = 'who';
+        who.innerHTML = `<b>${escapeHtml(a.name)}</b><span>${escapeHtml(sub)}</span>`;
+        const tag = document.createElement('span');
+        tag.className = 'seat-tag';
+        tag.textContent = a.seat;
+        row.append(order, avatarEl(a.name), who, tag);
         el.resultsList.appendChild(row);
       });
       el.resultsList.scrollTop = el.resultsList.scrollHeight;
@@ -227,8 +301,14 @@
       const chip = document.createElement('span');
       chip.className = 'chip';
       chip.title = roleOf(name) || name;
-      chip.innerHTML =
-        `<span class="dot" style="background:${avatarColor(name)}"></span>${escapeHtml(name)}`;
+      const face = avatarEl(name, 'chip-face');
+      face.title = `Click to set ${name}'s photo`;
+      face.addEventListener('click', () => {
+        photoTargetName = name;
+        el.photoInput.click();
+      });
+      chip.appendChild(face);
+      chip.appendChild(document.createTextNode(name));
       const x = document.createElement('button');
       x.textContent = '×';
       x.title = `Remove ${name} from the lottery`;
@@ -292,6 +372,7 @@
         }
         el.nameDisplay.textContent = name;
         el.nameRole.textContent = roleOf(name) || ' ';
+        el.stageAvatar.replaceChildren(avatarEl(name, 'stage-face'));
         tickSound();
         const t = step / steps;
         setTimeout(spin, 50 + 330 * t * t);
@@ -299,6 +380,7 @@
         el.nameDisplay.textContent = currentWinner;
         el.nameRole.textContent = roleOf(currentWinner) || ' ';
         el.stageLabel.textContent = '🎉 Winner';
+        el.stageAvatar.replaceChildren(avatarEl(currentWinner, 'stage-face'));
         el.stage.classList.add('winner');
         fanfare();
         Confetti.burst();
@@ -320,21 +402,82 @@
     assignSeat(seatId);
   }
 
+  function seatNode(seatId) {
+    return el.grid.querySelector(`.seat[data-id="${CSS.escape(seatId)}"]`);
+  }
+
   function assignSeat(seatId) {
-    state.assignments.push({ name: currentWinner, seat: seatId, ts: Date.now() });
+    const name = currentWinner;
+    // Commit immediately (a mid-walk refresh must not lose the result),
+    // but keep the seat looking free until the character sits down.
+    state.assignments.push({ name, seat: seatId, ts: Date.now() });
     save();
-    endPicking();
+    currentWinner = null;
+    pendingSeat = seatId;
+    phase = 'walking';
+    el.pickBanner.classList.remove('visible');
     renderAll();
 
-    const node = el.grid.querySelector(`.seat[data-id="${CSS.escape(seatId)}"]`);
-    if (node) {
-      node.classList.add('just-assigned');
-      setTimeout(() => node.classList.remove('just-assigned'), 700);
-      const r = node.getBoundingClientRect();
-      Confetti.burstAt(r.left + r.width / 2, r.top + r.height / 2);
-    }
-    fanfare();
-    toast(`${state.assignments[state.assignments.length - 1].name} → ${seatId} 🎉`);
+    walkToSeat(name, seatId, () => {
+      pendingSeat = null;
+      phase = 'idle';
+      renderAll();
+      const node = seatNode(seatId);
+      if (node) {
+        node.classList.add('just-assigned');
+        setTimeout(() => node.classList.remove('just-assigned'), 700);
+        const r = node.getBoundingClientRect();
+        Confetti.burstAt(r.left + r.width / 2, r.top + r.height / 2);
+      }
+      fanfare();
+      toast(`${name} → ${seatId} 🎉`);
+    });
+  }
+
+  /* Little bubble-faced character that walks to the seat and sits. */
+  function walkToSeat(name, seatId, done) {
+    const node = seatNode(seatId);
+    if (!node || !document.body.animate) { done(); return; }
+
+    const walker = document.createElement('div');
+    walker.className = 'walker';
+    const flip = document.createElement('div');
+    flip.className = 'walker-flip';
+    const inner = document.createElement('div');
+    inner.className = 'walker-inner';
+    inner.appendChild(avatarEl(name, 'walker-head'));
+    const body = document.createElement('div');
+    body.className = 'walker-body';
+    const legs = document.createElement('div');
+    legs.className = 'walker-legs';
+    legs.innerHTML = '<span class="leg l"></span><span class="leg r"></span>';
+    inner.append(body, legs);
+    flip.appendChild(inner);
+    walker.appendChild(flip);
+    document.body.appendChild(walker);
+
+    const rect = node.getBoundingClientRect();
+    const x0 = window.innerWidth / 2 - 23;          // spawns under the banner
+    const y0 = 70;
+    const x1 = rect.left + rect.width / 2 - 23;     // feet land on the seat
+    const y1 = rect.top + rect.height / 2 - 58;
+    if (x1 < x0) flip.classList.add('face-left');
+
+    const dist = Math.hypot(x1 - x0, y1 - y0);
+    const duration = Math.min(3200, Math.max(1300, dist * 5.5));
+    const footsteps = setInterval(() => beep(110 + Math.random() * 50, 0.06, 'sine', 0.05), 170);
+
+    const anim = walker.animate(
+      [{ transform: `translate(${x0}px, ${y0}px)` },
+       { transform: `translate(${x1}px, ${y1}px)` }],
+      { duration, easing: 'ease-in-out', fill: 'forwards' },
+    );
+    anim.onfinish = () => {
+      clearInterval(footsteps);
+      walker.classList.add('sitting');
+      beep(290, 0.3, 'sine', 0.06);
+      setTimeout(() => { walker.remove(); done(); }, 540);
+    };
   }
 
   function endPicking() {
@@ -444,6 +587,16 @@
   el.exportBtn.addEventListener('click', exportCsv);
   el.editBtn.addEventListener('click', openModal);
   el.addNameBtn.addEventListener('click', addName);
+  el.photoInput.addEventListener('change', () => {
+    const file = el.photoInput.files[0];
+    if (file && photoTargetName) setPhoto(photoTargetName, file);
+    el.photoInput.value = '';
+    photoTargetName = null;
+  });
+  el.loadDefaultsBtn.addEventListener('click', () => {
+    el.participantsInput.value = DEFAULT_PARTICIPANTS.join('\n');
+    updateCountNote();
+  });
   el.addNameInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') addName();
   });
