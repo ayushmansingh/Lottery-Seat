@@ -26,6 +26,8 @@
     legend: $('legend'),
     statPeople: $('stat-people'), statSeats: $('stat-seats'), statDone: $('stat-done'),
     drawBtn: $('draw-btn'), allDone: $('all-done'), resultsList: $('results-list'),
+    hatList: $('hat-list'), hatCount: $('hat-count'),
+    addNameInput: $('add-name-input'), addNameBtn: $('add-name-btn'),
     undoBtn: $('undo-btn'), exportBtn: $('export-btn'), editBtn: $('edit-btn'),
     soundBtn: $('sound-btn'), resetBtn: $('reset-btn'),
     pickBanner: $('pick-banner'), pickName: $('pick-name'),
@@ -209,6 +211,56 @@
     }
 
     el.soundBtn.textContent = state.soundOn ? '🔊 Sound on' : '🔇 Sound off';
+    renderHat();
+  }
+
+  /* ── "In the hat" chips ─────────────────────────────────── */
+  function renderHat() {
+    const remaining = remainingPeople();
+    const locked = phase !== 'idle';
+    el.hatCount.textContent = `(${remaining.length})`;
+    el.hatList.innerHTML = '';
+    if (remaining.length === 0) {
+      el.hatList.innerHTML = '<span class="hat-empty">Nobody left in the hat.</span>';
+    }
+    for (const name of remaining) {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.title = roleOf(name) || name;
+      chip.innerHTML =
+        `<span class="dot" style="background:${avatarColor(name)}"></span>${escapeHtml(name)}`;
+      const x = document.createElement('button');
+      x.textContent = '×';
+      x.title = `Remove ${name} from the lottery`;
+      x.disabled = locked;
+      x.addEventListener('click', () => removeName(name));
+      chip.appendChild(x);
+      el.hatList.appendChild(chip);
+    }
+    el.addNameInput.disabled = locked;
+    el.addNameBtn.disabled = locked;
+  }
+
+  function removeName(name) {
+    if (phase !== 'idle') return;
+    state.participants = state.participants.filter(n => n !== name);
+    save();
+    renderAll();
+    toast(`${name} removed from the lottery.`);
+  }
+
+  function addName() {
+    const name = el.addNameInput.value.trim();
+    if (!name) return;
+    if (state.participants.some(n => n.toLowerCase() === name.toLowerCase())) {
+      toast(`${name} is already in the lottery.`);
+      return;
+    }
+    state.participants.push(name);
+    save();
+    el.addNameInput.value = '';
+    renderAll();
+    toast(`${name} joins the lottery! 🍀`);
   }
 
   function renderAll() {
@@ -391,6 +443,10 @@
   el.resetBtn.addEventListener('click', resetAll);
   el.exportBtn.addEventListener('click', exportCsv);
   el.editBtn.addEventListener('click', openModal);
+  el.addNameBtn.addEventListener('click', addName);
+  el.addNameInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') addName();
+  });
   el.saveParticipantsBtn.addEventListener('click', saveParticipants);
   el.participantsInput.addEventListener('input', updateCountNote);
   el.modalBackdrop.addEventListener('click', e => {

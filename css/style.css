@@ -155,13 +155,98 @@ body {
   min-height: 120px;
 }
 
-.results h2 {
+.results h2,
+.hat h2 {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 1.2px;
   color: var(--text-dim);
   margin: 4px 0 10px;
 }
+
+/* "In the hat" chips */
+.hat-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.hat-empty {
+  color: var(--text-dim);
+  font-size: 12.5px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  padding: 4px 6px 4px 10px;
+  font-size: 12.5px;
+  animation: pop-in 0.25s ease;
+}
+
+.chip .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.chip button {
+  border: 0;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-dim);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.chip button:hover:not(:disabled) { background: var(--danger); color: #fff; }
+.chip button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.hat-add {
+  display: flex;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.hat-add input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--panel-border);
+  border-radius: 9px;
+  color: var(--text);
+  padding: 7px 11px;
+  font: 13px var(--font);
+  outline: none;
+}
+
+.hat-add input:focus { border-color: var(--accent-2); }
+.hat-add input:disabled, .hat-add button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.hat-add button {
+  width: 34px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.hat-add button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); }
 
 .results-list {
   flex: 1;

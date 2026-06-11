@@ -40,8 +40,11 @@ share the URL with the team.
 ## 👥 Adding your teammates
 
 On first launch a dialog asks for the participant list — paste one name per
-line. You can edit the list any time via **👥 Edit participants** (teammates
-who already won a seat keep it).
+line. After that, the **In the hat** panel in the sidebar shows everyone still
+waiting: hit a chip's **×** to drop someone before (or between) draws, or use
+the quick-add field to throw a name back in. For bulk changes, **👥 Edit
+participants** reopens the dialog (teammates who already won a seat keep it).
+The list is locked while a draw or seat pick is in progress.
 
 ## ⌨️ Shortcuts
 
