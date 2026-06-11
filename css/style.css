@@ -347,14 +347,14 @@ body {
   z-index: 2;
 }
 
-/* ── Walking character ─────────────────────────────────────── */
+/* ── Walking character (lives inside the map grid) ─────────── */
 .walker {
-  position: fixed;
+  position: absolute;
   left: 0;
   top: 0;
-  z-index: 70;
+  z-index: 12;
   pointer-events: none;
-  filter: drop-shadow(0 8px 8px rgba(0, 0, 0, 0.45));
+  filter: drop-shadow(0 7px 7px rgba(0, 0, 0, 0.45));
 }
 
 .walker-flip.face-left { transform: scaleX(-1); }
@@ -372,16 +372,16 @@ body {
 }
 
 .avatar.walker-head {
-  width: 46px;
-  height: 46px;
-  font-size: 17px;
+  width: 36px;
+  height: 36px;
+  font-size: 13px;
   border: 3px solid #fff;
   z-index: 2;
 }
 
 .walker-body {
-  width: 20px;
-  height: 16px;
+  width: 17px;
+  height: 13px;
   margin-top: -5px;
   background: linear-gradient(150deg, #9d7bff, #7c5cff);
   border-radius: 7px 7px 5px 5px;
@@ -390,14 +390,14 @@ body {
 
 .walker-legs {
   display: flex;
-  gap: 7px;
-  height: 13px;
+  gap: 6px;
+  height: 11px;
   margin-top: -2px;
 }
 
 .walker-legs .leg {
   width: 5px;
-  height: 13px;
+  height: 11px;
   background: #3b3f63;
   border-radius: 3px;
   transform-origin: top center;
@@ -521,6 +521,7 @@ body {
 }
 
 .map-grid {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(23, 62px);
   grid-auto-rows: 34px;
@@ -564,6 +565,16 @@ body {
   background: linear-gradient(160deg, #ffe45e, #ffd60a);
   font-weight: 700;
   box-shadow: 0 0 0 1px rgba(255, 214, 10, 0.55), 0 3px 10px rgba(255, 183, 3, 0.25);
+}
+
+/* Non-lottery seats: one quiet, unassuming tone so the yellow pops.
+   Team identity stays available in the hover tooltip. */
+.seat.dim {
+  background: #1d2240;
+  color: #5d6694;
+  border-color: rgba(255, 255, 255, 0.06);
+  opacity: 1;
+  font-weight: 500;
 }
 
 /* Online seats while picking */

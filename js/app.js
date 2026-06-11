@@ -22,6 +22,65 @@
 
   const lotterySeats = SEATS.filter(s => s.cat === LOTTERY_CAT).map(s => s.id);
 
+  /* ── Corridor pathfinding ───────────────────────────────────
+     Desks and rooms are obstacles; the gaps between them are
+     walkable aisles. Must match the grid metrics in style.css. */
+  const CELL_W = 62, CELL_H = 34, CELL_GAP = 7, GRID_PAD = 18;
+  const SPAWN = { c: 22, r: 4 };       // aisle outside the meeting room
+
+  const OBSTACLES = (() => {
+    const blocked = new Set();
+    for (const s of SEATS) blocked.add(s.c + ',' + s.r);
+    for (const b of BLOCKS) {
+      for (let c = b.c1; c <= b.c2; c++) {
+        for (let r = b.r1; r <= b.r2; r++) blocked.add(c + ',' + r);
+      }
+    }
+    return blocked;
+  })();
+
+  function cellCenter(c, r) {
+    return {
+      x: GRID_PAD + (c - 1) * (CELL_W + CELL_GAP) + CELL_W / 2,
+      y: GRID_PAD + (r - 1) * (CELL_H + CELL_GAP) + CELL_H / 2,
+    };
+  }
+
+  // BFS through free cells from SPAWN to a cell adjacent to the seat,
+  // then one final step onto the seat itself.
+  function findPath(goalC, goalR) {
+    const key = (c, r) => c + ',' + r;
+    const free = (c, r) =>
+      c >= 1 && c <= GRID_COLS && r >= 1 && r <= GRID_ROWS && !OBSTACLES.has(key(c, r));
+    const prev = new Map([[key(SPAWN.c, SPAWN.r), null]]);
+    const queue = [[SPAWN.c, SPAWN.r]];
+    let endKey = null;
+    while (queue.length) {
+      const [c, r] = queue.shift();
+      if (Math.abs(c - goalC) + Math.abs(r - goalR) === 1) { endKey = key(c, r); break; }
+      for (const [dc, dr] of [[-1, 0], [0, 1], [1, 0], [0, -1]]) {
+        const nc = c + dc, nr = r + dr;
+        if (free(nc, nr) && !prev.has(key(nc, nr))) {
+          prev.set(key(nc, nr), key(c, r));
+          queue.push([nc, nr]);
+        }
+      }
+    }
+    if (!endKey) return [[SPAWN.c, SPAWN.r], [goalC, goalR]];
+    const cells = [];
+    for (let k = endKey; k; k = prev.get(k)) cells.unshift(k.split(',').map(Number));
+    cells.push([goalC, goalR]);
+    // Drop intermediate points on straight runs so the walk is smooth.
+    const out = [cells[0]];
+    for (let i = 1; i < cells.length - 1; i++) {
+      const a = out[out.length - 1], b = cells[i], c = cells[i + 1];
+      if ((a[0] === b[0] && b[0] === c[0]) || (a[1] === b[1] && b[1] === c[1])) continue;
+      out.push(b);
+    }
+    out.push(cells[cells.length - 1]);
+    return out;
+  }
+
   /* ── Element refs ───────────────────────────────────────── */
   const $ = id => document.getElementById(id);
   const el = {
@@ -200,15 +259,19 @@
   }
 
   function buildLegend() {
-    const swatchClass = { /* reuse seat colors via a hidden seat element class */ };
     el.legend.innerHTML = '';
-    for (const [key, cat] of Object.entries(CATEGORIES)) {
+    const items = [
+      [`seat cat-${LOTTERY_CAT}`, `${CATEGORIES[LOTTERY_CAT].label} — up for grabs 🎰`],
+      ['seat assigned', 'Assigned'],
+      ['seat dim', 'Other teams (hover a seat for details)'],
+    ];
+    for (const [cls, label] of items) {
       const span = document.createElement('span');
       span.className = 'key';
       const sw = document.createElement('span');
-      sw.className = `swatch seat cat-${key}`;
+      sw.className = `swatch ${cls}`;
       span.appendChild(sw);
-      span.appendChild(document.createTextNode(cat.label + (key === LOTTERY_CAT ? ' 🎰' : '')));
+      span.appendChild(document.createTextNode(label));
       el.legend.appendChild(span);
     }
   }
@@ -434,10 +497,11 @@
     });
   }
 
-  /* Little bubble-faced character that walks to the seat and sits. */
+  /* Little bubble-faced character that enters by the meeting room,
+     walks the aisles (never over desks), and sits down on the seat. */
   function walkToSeat(name, seatId, done) {
-    const node = seatNode(seatId);
-    if (!node || !document.body.animate) { done(); return; }
+    const seat = SEATS.find(s => s.id === seatId);
+    if (!seat) { done(); return; }
 
     const walker = document.createElement('div');
     walker.className = 'walker';
@@ -454,30 +518,48 @@
     inner.append(body, legs);
     flip.appendChild(inner);
     walker.appendChild(flip);
-    document.body.appendChild(walker);
+    el.grid.appendChild(walker);     // inside the map, so it scales with zoom
 
-    const rect = node.getBoundingClientRect();
-    const x0 = window.innerWidth / 2 - 23;          // spawns under the banner
-    const y0 = 70;
-    const x1 = rect.left + rect.width / 2 - 23;     // feet land on the seat
-    const y1 = rect.top + rect.height / 2 - 58;
-    if (x1 < x0) flip.classList.add('face-left');
+    // Step out of the meeting room, then follow the aisles.
+    const points = [cellCenter(22.6, 3.4)];
+    for (const [c, r] of findPath(seat.c, seat.r)) points.push(cellCenter(c, r));
 
-    const dist = Math.hypot(x1 - x0, y1 - y0);
-    const duration = Math.min(3200, Math.max(1300, dist * 5.5));
+    let total = 0;
+    for (let i = 1; i < points.length; i++) {
+      total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+    }
+    const duration = Math.min(4.5, Math.max(1.6, total / 300));   // seconds
+    const speed = total / duration;
     const footsteps = setInterval(() => beep(110 + Math.random() * 50, 0.06, 'sine', 0.05), 170);
 
-    const anim = walker.animate(
-      [{ transform: `translate(${x0}px, ${y0}px)` },
-       { transform: `translate(${x1}px, ${y1}px)` }],
-      { duration, easing: 'ease-in-out', fill: 'forwards' },
-    );
-    anim.onfinish = () => {
-      clearInterval(footsteps);
-      walker.classList.add('sitting');
-      beep(290, 0.3, 'sine', 0.06);
-      setTimeout(() => { walker.remove(); done(); }, 540);
-    };
+    const setPos = p => { walker.style.transform = `translate(${p.x - 18}px, ${p.y - 48}px)`; };
+    setPos(points[0]);
+
+    let seg = 0, t = 0, last = performance.now();
+    function frame(now) {
+      let move = speed * ((now - last) / 1000);
+      last = now;
+      while (move > 0 && seg < points.length - 1) {
+        const a = points[seg], b = points[seg + 1];
+        const len = Math.hypot(b.x - a.x, b.y - a.y) || 0.001;
+        const remain = (1 - t) * len;
+        if (move < remain) { t += move / len; move = 0; } else { move -= remain; seg++; t = 0; }
+      }
+      if (seg >= points.length - 1) {
+        setPos(points[points.length - 1]);
+        clearInterval(footsteps);
+        walker.classList.add('sitting');
+        beep(290, 0.3, 'sine', 0.06);
+        setTimeout(() => { walker.remove(); done(); }, 540);
+        return;
+      }
+      const a = points[seg], b = points[seg + 1];
+      if (b.x < a.x) flip.classList.add('face-left');
+      else if (b.x > a.x) flip.classList.remove('face-left');
+      setPos({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
   }
 
   function endPicking() {
