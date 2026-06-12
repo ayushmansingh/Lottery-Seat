@@ -19,6 +19,8 @@
   let pendingSeat = null;              // assigned but character still walking
   let photoTargetName = null;          // who gets the next uploaded photo
   let zoom = null;                     // null = fit to viewport
+  let cinematicReturn = null;          // saved zoom/scroll for restore after walk
+  let cinematicBars = null;            // { top, bot } letterbox elements
 
   const lotterySeats = SEATS.filter(s => s.cat === LOTTERY_CAT).map(s => s.id);
 
@@ -520,6 +522,8 @@
     walker.appendChild(flip);
     el.grid.appendChild(walker);     // inside the map, so it scales with zoom
 
+    beginCinematic();
+
     // Step out of the meeting room, then follow the aisles.
     const points = [cellCenter(22.6, 3.4)];
     for (const [c, r] of findPath(seat.c, seat.r)) points.push(cellCenter(c, r));
@@ -532,8 +536,9 @@
     const speed = total / duration;
     const footsteps = setInterval(() => beep(110 + Math.random() * 50, 0.06, 'sine', 0.05), 170);
 
-    const setPos = p => { walker.style.transform = `translate(${p.x - 18}px, ${p.y - 48}px)`; };
+    const setPos = p => { walker.style.transform = `translate(${p.x - 28}px, ${p.y - 68}px)`; };
     setPos(points[0]);
+    updateCamera(points[0], true);
 
     let seg = 0, t = 0, last = performance.now();
     function frame(now) {
@@ -546,17 +551,26 @@
         if (move < remain) { t += move / len; move = 0; } else { move -= remain; seg++; t = 0; }
       }
       if (seg >= points.length - 1) {
-        setPos(points[points.length - 1]);
+        const end = points[points.length - 1];
+        setPos(end);
+        updateCamera(end);
         clearInterval(footsteps);
         walker.classList.add('sitting');
         beep(290, 0.3, 'sine', 0.06);
-        setTimeout(() => { walker.remove(); done(); }, 540);
+        cameraBonk();
+        setTimeout(() => {
+          walker.remove();
+          endCinematic();
+          done();
+        }, 540);
         return;
       }
       const a = points[seg], b = points[seg + 1];
       if (b.x < a.x) flip.classList.add('face-left');
       else if (b.x > a.x) flip.classList.remove('face-left');
-      setPos({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+      const cur = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+      setPos(cur);
+      updateCamera(cur);
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
@@ -654,6 +668,67 @@
     el.scale.style.transform = `scale(${s})`;
     el.scale.style.width = natural * s + 'px';
     el.scale.style.height = el.grid.offsetHeight * s + 'px';
+  }
+
+  /* ── Cinematic camera (used during walk-to-seat) ────────── */
+  function beginCinematic() {
+    cinematicReturn = {
+      zoom,
+      scrollLeft: el.viewport.scrollLeft,
+      scrollTop: el.viewport.scrollTop,
+    };
+    const fit = (el.viewport.clientWidth - 44) / el.grid.offsetWidth;
+    const cur = zoom === null ? Math.min(1, fit) : zoom;
+    zoom = Math.max(cur, 1.4);
+    applyScale();
+
+    if (!cinematicBars) {
+      const top = document.createElement('div');
+      top.className = 'cinema-bar top';
+      const bot = document.createElement('div');
+      bot.className = 'cinema-bar bottom';
+      document.body.append(top, bot);
+      cinematicBars = { top, bot };
+    }
+    // Force reflow so the transition runs from the off-screen start state.
+    void cinematicBars.top.offsetWidth;
+    cinematicBars.top.classList.add('visible');
+    cinematicBars.bot.classList.add('visible');
+  }
+
+  function updateCamera(p, snap) {
+    if (!cinematicReturn) return;
+    const s = currentScale();
+    const tx = Math.max(0, p.x * s - el.viewport.clientWidth / 2 + 22);
+    const ty = Math.max(0, p.y * s - el.viewport.clientHeight / 2 + 18);
+    if (snap) {
+      el.viewport.scrollLeft = tx;
+      el.viewport.scrollTop = ty;
+    } else {
+      el.viewport.scrollLeft += (tx - el.viewport.scrollLeft) * 0.18;
+      el.viewport.scrollTop  += (ty - el.viewport.scrollTop)  * 0.18;
+    }
+  }
+
+  function cameraBonk() {
+    if (!cinematicReturn) return;
+    el.scale.classList.remove('cam-shake');
+    void el.scale.offsetWidth;     // restart the keyframe animation
+    el.scale.classList.add('cam-shake');
+  }
+
+  function endCinematic() {
+    if (!cinematicReturn) return;
+    const saved = cinematicReturn;
+    cinematicReturn = null;
+    zoom = saved.zoom;
+    applyScale();
+    el.viewport.scrollTo({ left: saved.scrollLeft, top: saved.scrollTop, behavior: 'smooth' });
+    if (cinematicBars) {
+      cinematicBars.top.classList.remove('visible');
+      cinematicBars.bot.classList.remove('visible');
+    }
+    setTimeout(() => el.scale.classList.remove('cam-shake'), 700);
   }
 
   /* ── Wire-up ────────────────────────────────────────────── */

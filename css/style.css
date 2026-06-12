@@ -372,10 +372,10 @@ body {
 }
 
 .avatar.walker-head {
-  width: 36px;
-  height: 36px;
-  font-size: 13px;
-  border: 3px solid #fff;
+  width: 56px;
+  height: 56px;
+  font-size: 18px;
+  border: 4px solid #fff;
   z-index: 2;
 }
 
@@ -518,7 +518,36 @@ body {
 
 .map-scale {
   transform-origin: top left;
+  transition: transform 0.55s cubic-bezier(0.34, 1.45, 0.5, 1);
 }
+
+.map-scale.cam-shake {
+  animation: cam-shake 0.55s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+@keyframes cam-shake {
+  10%, 90% { translate: -3px 1px; }
+  20%, 80% { translate: 5px -2px; }
+  30%, 70% { translate: -7px 3px; }
+  40%, 60% { translate: 6px -3px; }
+  50%      { translate: -3px 1px; }
+}
+
+/* Letterbox bars during the cinematic walk */
+.cinema-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 64px;
+  background: #000;
+  z-index: 5000;
+  pointer-events: none;
+  transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.cinema-bar.top    { top: 0;    transform: translateY(-100%); }
+.cinema-bar.bottom { bottom: 0; transform: translateY(100%); }
+.cinema-bar.top.visible,
+.cinema-bar.bottom.visible { transform: translateY(0); }
 
 .map-grid {
   position: relative;
