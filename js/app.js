@@ -14,13 +14,15 @@
     photos: {},                        // name -> uploaded photo (data URL)
     soundOn: true,
   };
-  let phase = 'idle';                  // idle | drawing | picking | walking
+  let phase = 'idle';                  // idle | drawing | picking | switching | walking
   let currentWinner = null;
-  let pendingSeat = null;              // assigned but character still walking
+  let pendingSeats = new Set();        // assigned but character still walking
+  let switchSource = null;             // seat being moved in switch mode
   let photoTargetName = null;          // who gets the next uploaded photo
   let zoom = null;                     // null = fit to viewport
   let cinematicReturn = null;          // saved zoom/scroll for restore after walk
   let cinematicBars = null;            // { top, bot } letterbox elements
+  let cinematicDepth = 0;              // active walkers (2 during a swap)
 
   const lotterySeats = SEATS.filter(s => s.cat === LOTTERY_CAT).map(s => s.id);
 
@@ -50,12 +52,14 @@
 
   // BFS through free cells from SPAWN to a cell adjacent to the seat,
   // then one final step onto the seat itself.
-  function findPath(goalC, goalR) {
+  function findPath(goalC, goalR, startC = SPAWN.c, startR = SPAWN.r) {
     const key = (c, r) => c + ',' + r;
     const free = (c, r) =>
       c >= 1 && c <= GRID_COLS && r >= 1 && r <= GRID_ROWS && !OBSTACLES.has(key(c, r));
-    const prev = new Map([[key(SPAWN.c, SPAWN.r), null]]);
-    const queue = [[SPAWN.c, SPAWN.r]];
+    // The start cell may itself be a seat (switch mode) — it is seeded
+    // directly so the character can step off it into the aisle.
+    const prev = new Map([[key(startC, startR), null]]);
+    const queue = [[startC, startR]];
     let endKey = null;
     while (queue.length) {
       const [c, r] = queue.shift();
@@ -68,7 +72,7 @@
         }
       }
     }
-    if (!endKey) return [[SPAWN.c, SPAWN.r], [goalC, goalR]];
+    if (!endKey) return [[startC, startR], [goalC, goalR]];
     const cells = [];
     for (let k = endKey; k; k = prev.get(k)) cells.unshift(k.split(',').map(Number));
     cells.push([goalC, goalR]);
@@ -94,7 +98,7 @@
     addNameInput: $('add-name-input'), addNameBtn: $('add-name-btn'),
     undoBtn: $('undo-btn'), exportBtn: $('export-btn'), editBtn: $('edit-btn'),
     soundBtn: $('sound-btn'), resetBtn: $('reset-btn'),
-    pickBanner: $('pick-banner'), pickName: $('pick-name'),
+    pickBanner: $('pick-banner'), bannerMsg: $('banner-msg'),
     randomSeatBtn: $('random-seat-btn'), cancelPickBtn: $('cancel-pick-btn'),
     overlay: $('overlay'), stage: $('draw-stage'), stageLabel: $('stage-label'),
     nameDisplay: $('name-display'), nameRole: $('name-role'), continueBtn: $('continue-btn'),
@@ -283,15 +287,19 @@
     for (const node of el.grid.querySelectorAll('.seat')) {
       const id = node.dataset.id;
       if (!lotterySeats.includes(id)) continue;
-      // While the character walks, its seat still looks free.
-      const owner = id === pendingSeat ? null : bySeat.get(id);
+      // While a character walks, its destination seat still looks free.
+      const owner = pendingSeats.has(id) ? null : bySeat.get(id);
       node.classList.toggle('assigned', !!owner);
-      node.classList.toggle('pickable', phase === 'picking' && !owner);
+      node.classList.toggle('pickable',
+        (phase === 'picking' || phase === 'switching') && !owner);
+      node.classList.toggle('swappable', phase === 'switching' && !!owner && id !== switchSource);
+      node.classList.toggle('switch-source', phase === 'switching' && id === switchSource);
       if (owner) {
         const src = photoSrc(owner);
         const face = src ? `<span class="seat-face" style="background-image:url('${src}')"></span>` : '';
         node.innerHTML = `${face}${id}<span class="occupant">${escapeHtml(owner)}</span>`;
-        node.title = `${id} · ${owner}` + (roleOf(owner) ? ` · ${roleOf(owner)}` : '');
+        node.title = `${id} · ${owner}` + (roleOf(owner) ? ` · ${roleOf(owner)}` : '')
+          + ' — click to move or swap';
       } else {
         node.textContent = id;
         node.title = `${id} · ${CATEGORIES[LOTTERY_CAT].label}`;
@@ -457,14 +465,79 @@
   function startPicking() {
     el.overlay.classList.remove('visible');
     phase = 'picking';
-    el.pickName.textContent = currentWinner;
+    el.bannerMsg.innerHTML =
+      `🎯 <b>${escapeHtml(currentWinner)}</b>, click a glowing seat to claim it!`;
+    el.randomSeatBtn.style.display = '';
     el.pickBanner.classList.add('visible');
     renderAll();
   }
 
   function onSeatClick(seatId) {
-    if (phase !== 'picking' || assignedSeats().has(seatId)) return;
-    assignSeat(seatId);
+    const occupied = assignedSeats().has(seatId);
+    if (phase === 'picking') {
+      if (!occupied) assignSeat(seatId);
+    } else if (phase === 'idle') {
+      if (occupied) startSwitch(seatId);
+    } else if (phase === 'switching') {
+      if (seatId === switchSource) cancelSwitch();
+      else doSwitch(seatId);
+    }
+  }
+
+  /* ── Post-assignment seat switch ────────────────────────────
+     Only the seat field changes — draw order, names, and
+     timestamps stay exactly as drawn.                          */
+  function startSwitch(seatId) {
+    const a = state.assignments.find(x => x.seat === seatId);
+    if (!a) return;
+    switchSource = seatId;
+    phase = 'switching';
+    el.bannerMsg.innerHTML =
+      `🔁 Moving <b>${escapeHtml(a.name)}</b> (${seatId}) — click a free seat, or an occupied one to swap.`;
+    el.randomSeatBtn.style.display = 'none';
+    el.pickBanner.classList.add('visible');
+    renderAll();
+  }
+
+  function cancelSwitch() {
+    switchSource = null;
+    phase = 'idle';
+    el.pickBanner.classList.remove('visible');
+    renderAll();
+  }
+
+  function doSwitch(targetId) {
+    const sourceId = switchSource;
+    const a = state.assignments.find(x => x.seat === sourceId);
+    const b = state.assignments.find(x => x.seat === targetId);
+    a.seat = targetId;
+    if (b) b.seat = sourceId;
+    save();
+    switchSource = null;
+    phase = 'walking';
+    el.pickBanner.classList.remove('visible');
+    pendingSeats.add(targetId);
+    if (b) pendingSeats.add(sourceId);
+    renderAll();
+
+    let walking = b ? 2 : 1;
+    const finish = () => {
+      if (--walking > 0) return;
+      pendingSeats.clear();
+      phase = 'idle';
+      renderAll();
+      for (const id of b ? [targetId, sourceId] : [targetId]) {
+        const node = seatNode(id);
+        if (!node) continue;
+        node.classList.add('just-assigned');
+        setTimeout(() => node.classList.remove('just-assigned'), 700);
+      }
+      fanfare();
+      toast(b ? `${a.name} ⇄ ${b.name} swapped seats!` : `${a.name} moved to ${targetId}.`);
+    };
+    // The camera follows the first walker; the second just walks.
+    walkToSeat(a.name, targetId, finish, sourceId);
+    if (b) walkToSeat(b.name, sourceId, finish, targetId, false);
   }
 
   function seatNode(seatId) {
@@ -478,13 +551,13 @@
     state.assignments.push({ name, seat: seatId, ts: Date.now() });
     save();
     currentWinner = null;
-    pendingSeat = seatId;
+    pendingSeats.add(seatId);
     phase = 'walking';
     el.pickBanner.classList.remove('visible');
     renderAll();
 
     walkToSeat(name, seatId, () => {
-      pendingSeat = null;
+      pendingSeats.clear();
       phase = 'idle';
       renderAll();
       const node = seatNode(seatId);
@@ -501,7 +574,7 @@
 
   /* Little bubble-faced character that enters by the meeting room,
      walks the aisles (never over desks), and sits down on the seat. */
-  function walkToSeat(name, seatId, done) {
+  function walkToSeat(name, seatId, done, fromSeatId = null, track = true) {
     const seat = SEATS.find(s => s.id === seatId);
     if (!seat) { done(); return; }
 
@@ -524,9 +597,16 @@
 
     beginCinematic();
 
-    // Step out of the meeting room, then follow the aisles.
-    const points = [cellCenter(22.6, 3.4)];
-    for (const [c, r] of findPath(seat.c, seat.r)) points.push(cellCenter(c, r));
+    // New arrivals step out of the meeting room; seat switchers get up
+    // from their current seat. Either way, follow the aisles.
+    const points = [];
+    const from = fromSeatId && SEATS.find(s => s.id === fromSeatId);
+    if (from) {
+      for (const [c, r] of findPath(seat.c, seat.r, from.c, from.r)) points.push(cellCenter(c, r));
+    } else {
+      points.push(cellCenter(22.6, 3.4));
+      for (const [c, r] of findPath(seat.c, seat.r)) points.push(cellCenter(c, r));
+    }
 
     let total = 0;
     for (let i = 1; i < points.length; i++) {
@@ -538,7 +618,7 @@
 
     const setPos = p => { walker.style.transform = `translate(${p.x - 28}px, ${p.y - 68}px)`; };
     setPos(points[0]);
-    updateCamera(points[0], true);
+    if (track) updateCamera(points[0], true);
 
     let seg = 0, t = 0, last = performance.now();
     function frame(now) {
@@ -553,7 +633,7 @@
       if (seg >= points.length - 1) {
         const end = points[points.length - 1];
         setPos(end);
-        updateCamera(end);
+        if (track) updateCamera(end);
         clearInterval(footsteps);
         walker.classList.add('sitting');
         beep(290, 0.3, 'sine', 0.06);
@@ -570,7 +650,7 @@
       else if (b.x > a.x) flip.classList.remove('face-left');
       const cur = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
       setPos(cur);
-      updateCamera(cur);
+      if (track) updateCamera(cur);
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
@@ -672,6 +752,9 @@
 
   /* ── Cinematic camera (used during walk-to-seat) ────────── */
   function beginCinematic() {
+    // During a swap two walkers share one cinematic: zoom in once,
+    // restore only after the last one has sat down.
+    if (++cinematicDepth > 1) return;
     cinematicReturn = {
       zoom,
       scrollLeft: el.viewport.scrollLeft,
@@ -719,6 +802,8 @@
 
   function endCinematic() {
     if (!cinematicReturn) return;
+    cinematicDepth = Math.max(0, cinematicDepth - 1);
+    if (cinematicDepth > 0) return;
     const saved = cinematicReturn;
     cinematicReturn = null;
     zoom = saved.zoom;
@@ -738,7 +823,10 @@
     const free = freeSeats();
     if (phase === 'picking' && free.length) assignSeat(free[randInt(free.length)]);
   });
-  el.cancelPickBtn.addEventListener('click', cancelPick);
+  el.cancelPickBtn.addEventListener('click', () => {
+    if (phase === 'picking') cancelPick();
+    else if (phase === 'switching') cancelSwitch();
+  });
   el.undoBtn.addEventListener('click', undoLast);
   el.resetBtn.addEventListener('click', resetAll);
   el.exportBtn.addEventListener('click', exportCsv);
@@ -788,6 +876,7 @@
       startPicking();
     }
     if (e.key === 'Escape' && phase === 'picking') cancelPick();
+    if (e.key === 'Escape' && phase === 'switching') cancelSwitch();
   });
 
   /* ── Init ───────────────────────────────────────────────── */
