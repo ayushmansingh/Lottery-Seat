@@ -22,6 +22,9 @@ HS-34 … HS-47) — then moves on to the next draw.
   the draw reveal, the walker, the results, and on the assigned seat.
 - **Live tracker** — draw order, timestamps, and seat tags in the sidebar;
   assigned seats show the occupant's name on the map.
+- **Seat switching** — click any assigned seat, then a free seat to move that
+  person or another assigned seat to swap the two; the characters get up and
+  walk to their new seats. Draw order and timestamps are untouched.
 - **Safety nets** — undo the last assignment, cancel a draw (name goes back in
   the hat), or reset the whole lottery.
 - **Persistence** — state is saved to `localStorage`, so a page refresh never
