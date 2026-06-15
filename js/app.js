@@ -13,6 +13,8 @@
     assignments: [],                   // [{ name, seat, ts }] in draw order
     photos: {},                        // name -> uploaded photo (data URL)
     soundOn: true,
+    seatPool: { add: [], remove: [] }, // tweaks to the default lottery pool
+    fixedSeats: {},                    // name -> seatId, sat before randomizer
   };
   let phase = 'idle';                  // idle | drawing | picking | switching | walking
   let currentWinner = null;
@@ -24,7 +26,16 @@
   let cinematicBars = null;            // { top, bot } letterbox elements
   let cinematicDepth = 0;              // active walkers (2 during a swap)
 
-  const lotterySeats = SEATS.filter(s => s.cat === LOTTERY_CAT).map(s => s.id);
+  const DEFAULT_POOL = SEATS.filter(s => s.cat === LOTTERY_CAT).map(s => s.id);
+  let lotterySeats = DEFAULT_POOL.slice();
+
+  function recomputePool() {
+    const set = new Set(DEFAULT_POOL);
+    for (const id of state.seatPool.remove || []) set.delete(id);
+    for (const id of state.seatPool.add    || []) set.add(id);
+    lotterySeats = SEATS.map(s => s.id).filter(id => set.has(id));
+  }
+  const isInPool = id => lotterySeats.includes(id);
 
   /* ── Corridor pathfinding ───────────────────────────────────
      Desks and rooms are obstacles; the gaps between them are
@@ -108,6 +119,13 @@
     stageAvatar: $('stage-avatar'), photoInput: $('photo-input'),
     toast: $('toast'),
     zoomIn: $('zoom-in'), zoomOut: $('zoom-out'), zoomFit: $('zoom-fit'),
+    setupBtn: $('setup-btn'), setupBackdrop: $('setup-backdrop'),
+    setupLocked: $('setup-locked'), setupIntro: $('setup-intro'),
+    setupCloseBtn: $('setup-close-btn'), setupNote: $('setup-note'),
+    poolCount: $('pool-count'), poolIn: $('pool-in'), poolOut: $('pool-out'),
+    reservedCount: $('reserved-count'), reservedList: $('reserved-list'),
+    reservedNameSel: $('reserved-name-sel'), reservedSeatSel: $('reserved-seat-sel'),
+    reservedAddBtn: $('reserved-add-btn'),
   };
 
   /* ── Persistence ────────────────────────────────────────── */
@@ -119,6 +137,11 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) state = Object.assign(state, JSON.parse(raw));
     } catch (e) { /* corrupted storage — start fresh */ }
+    // Defaults for fields added in later versions.
+    state.seatPool = state.seatPool || { add: [], remove: [] };
+    state.seatPool.add = state.seatPool.add || [];
+    state.seatPool.remove = state.seatPool.remove || [];
+    state.fixedSeats = state.fixedSeats || {};
   }
 
   /* ── Helpers ────────────────────────────────────────────── */
@@ -251,15 +274,14 @@
     }
     for (const s of SEATS) {
       const d = document.createElement('div');
-      d.className = `seat cat-${s.cat}` + (s.cat === LOTTERY_CAT ? '' : ' dim');
+      const inPool = isInPool(s.id);
+      d.className = `seat cat-${s.cat}` + (inPool ? ' pool' : ' dim');
       d.dataset.id = s.id;
       d.textContent = s.id;
       d.style.gridColumn = s.c;
       d.style.gridRow = s.r;
       d.title = `${s.id} · ${CATEGORIES[s.cat].label}`;
-      if (s.cat === LOTTERY_CAT) {
-        d.addEventListener('click', () => onSeatClick(s.id));
-      }
+      if (inPool) d.addEventListener('click', () => onSeatClick(s.id));
       el.grid.appendChild(d);
     }
   }
@@ -267,7 +289,7 @@
   function buildLegend() {
     el.legend.innerHTML = '';
     const items = [
-      [`seat cat-${LOTTERY_CAT}`, `${CATEGORIES[LOTTERY_CAT].label} — up for grabs 🎰`],
+      ['seat pool', 'Lottery pool — up for grabs 🎰'],
       ['seat assigned', 'Assigned'],
       ['seat dim', 'Other teams (hover a seat for details)'],
     ];
@@ -284,12 +306,17 @@
 
   function renderSeats() {
     const bySeat = new Map(state.assignments.map(a => [a.seat, a.name]));
+    const reservedBySeat = new Map(
+      Object.entries(state.fixedSeats).map(([n, s]) => [s, n])
+    );
     for (const node of el.grid.querySelectorAll('.seat')) {
       const id = node.dataset.id;
       if (!lotterySeats.includes(id)) continue;
       // While a character walks, its destination seat still looks free.
       const owner = pendingSeats.has(id) ? null : bySeat.get(id);
+      const reservedFor = !owner && phase === 'idle' ? reservedBySeat.get(id) : null;
       node.classList.toggle('assigned', !!owner);
+      node.classList.toggle('reserved', !!reservedFor);
       node.classList.toggle('pickable',
         (phase === 'picking' || phase === 'switching') && !owner);
       node.classList.toggle('swappable', phase === 'switching' && !!owner && id !== switchSource);
@@ -300,6 +327,11 @@
         node.innerHTML = `${face}${id}<span class="occupant">${escapeHtml(owner)}</span>`;
         node.title = `${id} · ${owner}` + (roleOf(owner) ? ` · ${roleOf(owner)}` : '')
           + ' — click to move or swap';
+      } else if (reservedFor) {
+        const src = photoSrc(reservedFor);
+        const face = src ? `<span class="seat-face" style="background-image:url('${src}')"></span>` : '';
+        node.innerHTML = `${face}${id}<span class="occupant">📌 ${escapeHtml(reservedFor)}</span>`;
+        node.title = `${id} · Reserved for ${reservedFor}`;
       } else {
         node.textContent = id;
         node.title = `${id} · ${CATEGORIES[LOTTERY_CAT].label}`;
@@ -423,8 +455,58 @@
 
   /* ── Draw flow ──────────────────────────────────────────── */
   function startDraw() {
+    if (phase !== 'idle') return;
+    // Any reservations that haven't walked to their seat yet must go first.
+    const assignedNms = assignedNames();
+    const takenSeats = assignedSeats();
+    const pending = Object.entries(state.fixedSeats).filter(([name, seat]) =>
+      state.participants.includes(name)
+      && !assignedNms.has(name)
+      && isInPool(seat)
+      && !takenSeats.has(seat));
+    if (pending.length) {
+      toast(`Seating ${pending.length} reserved teammate${pending.length === 1 ? '' : 's'} first…`);
+      runReservedWalks(pending, () => doRandomDraw());
+    } else {
+      doRandomDraw();
+    }
+  }
+
+  function runReservedWalks(list, onDone) {
+    phase = 'walking';
+    renderAll();
+    const step = i => {
+      if (i >= list.length) {
+        phase = 'idle';
+        renderAll();
+        onDone();
+        return;
+      }
+      const [name, seatId] = list[i];
+      state.assignments.push({ name, seat: seatId, ts: Date.now() });
+      save();
+      pendingSeats.add(seatId);
+      renderAll();
+      walkToSeat(name, seatId, () => {
+        pendingSeats.delete(seatId);
+        const node = seatNode(seatId);
+        if (node) {
+          node.classList.add('just-assigned');
+          setTimeout(() => node.classList.remove('just-assigned'), 700);
+        }
+        renderAll();
+        step(i + 1);
+      });
+    };
+    step(0);
+  }
+
+  function doRandomDraw() {
     const pool = remainingPeople();
-    if (phase !== 'idle' || pool.length === 0 || freeSeats().length === 0) return;
+    if (pool.length === 0 || freeSeats().length === 0) {
+      renderAll();
+      return;
+    }
     phase = 'drawing';
     renderAll();
 
@@ -734,10 +816,206 @@
       if (!names.some(n => n.toLowerCase() === a.name.toLowerCase())) names.push(a.name);
     }
     state.participants = names;
+    // Drop reservations for anyone no longer in the lottery.
+    for (const name of Object.keys(state.fixedSeats)) {
+      if (!names.includes(name)) delete state.fixedSeats[name];
+    }
     save();
     el.modalBackdrop.classList.remove('visible');
     renderAll();
     toast(`Participant list saved (${names.length} names).`);
+  }
+
+  /* ── Pre-draw seat setup ────────────────────────────────────
+     Lets the organiser:
+       • add/remove seats from the lottery pool (e.g. swap in a
+         seat from another team's area)
+       • reserve specific seats for named people; reserved
+         teammates walk to their seats just before the randomizer.
+     Locked once the lottery has started.                       */
+  function setSeatInPool(seatId, want) {
+    if (want === isInPool(seatId)) return;
+    const inDefault = DEFAULT_POOL.includes(seatId);
+    if (want) {
+      if (inDefault) state.seatPool.remove = state.seatPool.remove.filter(id => id !== seatId);
+      else if (!state.seatPool.add.includes(seatId)) state.seatPool.add.push(seatId);
+    } else {
+      if (inDefault) {
+        if (!state.seatPool.remove.includes(seatId)) state.seatPool.remove.push(seatId);
+      } else {
+        state.seatPool.add = state.seatPool.add.filter(id => id !== seatId);
+      }
+      // Any reservation tied to this seat is no longer valid.
+      for (const [name, s] of Object.entries(state.fixedSeats)) {
+        if (s === seatId) delete state.fixedSeats[name];
+      }
+    }
+    recomputePool();
+    save();
+  }
+
+  function togglePoolSeat(seatId) {
+    setSeatInPool(seatId, !isInPool(seatId));
+    buildMap();
+    renderAll();
+    renderSetup();
+  }
+
+  function addReserved() {
+    const name = el.reservedNameSel.value;
+    const seatId = el.reservedSeatSel.value;
+    if (!name || !seatId) return;
+    state.fixedSeats[name] = seatId;
+    save();
+    renderSetup();
+    renderAll();
+  }
+
+  function removeReserved(name) {
+    delete state.fixedSeats[name];
+    save();
+    renderSetup();
+    renderAll();
+  }
+
+  function openSetup() {
+    renderSetup();
+    el.setupBackdrop.classList.add('visible');
+  }
+  function closeSetup() {
+    el.setupBackdrop.classList.remove('visible');
+  }
+
+  function renderSetup() {
+    const locked = state.assignments.length > 0;
+    el.setupLocked.hidden = !locked;
+    renderPoolEditor(locked);
+    renderReservedEditor(locked);
+    const resCount = Object.keys(state.fixedSeats).length;
+    el.setupNote.textContent =
+      `${lotterySeats.length} pool seats · ${resCount} reserved`;
+  }
+
+  function renderPoolEditor(locked) {
+    el.poolCount.textContent = lotterySeats.length;
+
+    el.poolIn.innerHTML = '';
+    const inSorted = lotterySeats.slice().sort();
+    for (const id of inSorted) {
+      const seat = SEATS.find(s => s.id === id);
+      const chip = document.createElement('button');
+      chip.className = 'seat-chip in';
+      chip.disabled = locked;
+      chip.title = locked
+        ? 'Lottery has started — reset to edit'
+        : `Remove ${id} (${CATEGORIES[seat.cat].label}) from the pool`;
+      chip.innerHTML = `<span class="id">${id}</span><span class="ico">×</span>`;
+      chip.addEventListener('click', () => togglePoolSeat(id));
+      el.poolIn.appendChild(chip);
+    }
+
+    el.poolOut.innerHTML = '';
+    const outSeats = SEATS.filter(s => !isInPool(s.id));
+    const byCat = new Map();
+    for (const s of outSeats) {
+      if (!byCat.has(s.cat)) byCat.set(s.cat, []);
+      byCat.get(s.cat).push(s);
+    }
+    for (const [cat, seats] of byCat) {
+      const h = document.createElement('div');
+      h.className = 'cat-header';
+      h.textContent = CATEGORIES[cat].label;
+      el.poolOut.appendChild(h);
+      const row = document.createElement('div');
+      row.className = 'pool-row';
+      for (const s of seats) {
+        const chip = document.createElement('button');
+        chip.className = 'seat-chip out';
+        chip.disabled = locked;
+        chip.title = locked
+          ? 'Lottery has started — reset to edit'
+          : `Add ${s.id} to the pool`;
+        chip.innerHTML = `<span class="id">${s.id}</span><span class="ico">＋</span>`;
+        chip.addEventListener('click', () => togglePoolSeat(s.id));
+        row.appendChild(chip);
+      }
+      el.poolOut.appendChild(row);
+    }
+  }
+
+  function renderReservedEditor(locked) {
+    const entries = Object.entries(state.fixedSeats);
+    el.reservedCount.textContent = entries.length;
+    el.reservedList.innerHTML = '';
+    if (entries.length === 0) {
+      const d = document.createElement('div');
+      d.className = 'reserved-empty';
+      d.textContent = 'Nobody reserved yet — the whole pool is up for randomizing.';
+      el.reservedList.appendChild(d);
+    }
+    const assignedNms = assignedNames();
+    for (const [name, seatId] of entries) {
+      const row = document.createElement('div');
+      row.className = 'reserved-row';
+      if (assignedNms.has(name)) row.classList.add('done');
+      row.appendChild(avatarEl(name, 'res-face'));
+      const who = document.createElement('span');
+      who.className = 'who';
+      who.textContent = name;
+      row.appendChild(who);
+      const arrow = document.createElement('span');
+      arrow.className = 'arrow';
+      arrow.textContent = '→';
+      row.appendChild(arrow);
+      const seat = document.createElement('span');
+      seat.className = 'res-seat';
+      seat.textContent = seatId;
+      row.appendChild(seat);
+      const tag = document.createElement('span');
+      tag.className = 'res-status';
+      tag.textContent = assignedNms.has(name) ? 'sat' : 'pending';
+      row.appendChild(tag);
+      const x = document.createElement('button');
+      x.className = 'rm-btn';
+      x.textContent = '×';
+      x.disabled = locked;
+      x.title = locked
+        ? 'Lottery has started — reset to edit'
+        : `Remove ${name}'s reservation`;
+      x.addEventListener('click', () => removeReserved(name));
+      row.appendChild(x);
+      el.reservedList.appendChild(row);
+    }
+
+    // Dropdowns: people not yet reserved/assigned × seats in pool not taken.
+    const usedNames = new Set(entries.map(([n]) => n));
+    el.reservedNameSel.innerHTML = '<option value="">— pick a person —</option>';
+    for (const name of state.participants) {
+      if (usedNames.has(name) || assignedNms.has(name)) continue;
+      const o = document.createElement('option');
+      o.value = name;
+      o.textContent = name;
+      el.reservedNameSel.appendChild(o);
+    }
+
+    const usedSeats = new Set([
+      ...entries.map(([, s]) => s),
+      ...assignedSeats(),
+    ]);
+    el.reservedSeatSel.innerHTML = '<option value="">— pick a seat —</option>';
+    for (const id of lotterySeats.slice().sort()) {
+      if (usedSeats.has(id)) continue;
+      const o = document.createElement('option');
+      o.value = id;
+      o.textContent = id;
+      el.reservedSeatSel.appendChild(o);
+    }
+
+    el.reservedNameSel.disabled = locked;
+    el.reservedSeatSel.disabled = locked;
+    el.reservedAddBtn.disabled = locked
+      || el.reservedNameSel.options.length <= 1
+      || el.reservedSeatSel.options.length <= 1;
   }
 
   /* ── Zoom / fit ─────────────────────────────────────────── */
@@ -831,6 +1109,12 @@
   el.resetBtn.addEventListener('click', resetAll);
   el.exportBtn.addEventListener('click', exportCsv);
   el.editBtn.addEventListener('click', openModal);
+  el.setupBtn.addEventListener('click', openSetup);
+  el.setupCloseBtn.addEventListener('click', closeSetup);
+  el.reservedAddBtn.addEventListener('click', addReserved);
+  el.setupBackdrop.addEventListener('click', e => {
+    if (e.target === el.setupBackdrop) closeSetup();
+  });
   el.addNameBtn.addEventListener('click', addName);
   el.photoInput.addEventListener('change', () => {
     const file = el.photoInput.files[0];
@@ -881,6 +1165,7 @@
 
   /* ── Init ───────────────────────────────────────────────── */
   load();
+  recomputePool();
   buildMap();
   buildLegend();
   renderAll();

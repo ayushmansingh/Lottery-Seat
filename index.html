@@ -52,6 +52,7 @@
         <button id="undo-btn">↩️ Undo last</button>
         <button id="export-btn">📄 Export CSV</button>
         <button id="edit-btn">👥 Edit participants</button>
+        <button id="setup-btn">🪑 Seat setup</button>
         <button id="sound-btn">🔊 Sound on</button>
         <button id="reset-btn" class="danger" style="grid-column: 1 / -1;">🗑️ Reset lottery</button>
       </div>
@@ -91,6 +92,49 @@
       <div class="name-role" id="name-role">&nbsp;</div>
       <div class="hint">You're up! Time to pick a seat 🍀</div>
       <button class="continue-btn" id="continue-btn">Pick my seat →</button>
+    </div>
+  </div>
+
+  <!-- ── Seat-setup modal ─────────────────────────────────── -->
+  <div class="modal-backdrop" id="setup-backdrop">
+    <div class="modal setup-modal">
+      <h2>🪑 Pre-draw seat setup</h2>
+      <p id="setup-intro">Tweak the lottery pool and reserve seats for specific
+        people. Reserved teammates walk to their seats before the randomizer
+        runs.</p>
+      <div id="setup-locked" class="setup-lock" hidden>
+        🔒 Lottery has already started — reset to edit setup.
+      </div>
+
+      <section class="setup-section">
+        <h3>Seat pool <span class="count-badge" id="pool-count"></span></h3>
+        <div class="pool-columns">
+          <div class="pool-col">
+            <h4>In the pool</h4>
+            <div id="pool-in" class="pool-chips"></div>
+          </div>
+          <div class="pool-col">
+            <h4>Add from layout</h4>
+            <div id="pool-out" class="pool-chips"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="setup-section">
+        <h3>Reserved seats <span class="count-badge" id="reserved-count"></span></h3>
+        <div id="reserved-list" class="reserved-list"></div>
+        <div class="reserved-add">
+          <select id="reserved-name-sel"></select>
+          <span class="arrow">→</span>
+          <select id="reserved-seat-sel"></select>
+          <button id="reserved-add-btn">＋ Reserve</button>
+        </div>
+      </section>
+
+      <div class="modal-foot">
+        <span class="count-note" id="setup-note"></span>
+        <button class="save-btn" id="setup-close-btn">Done</button>
+      </div>
     </div>
   </div>
 
